@@ -17,6 +17,8 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"path"
 	"regexp"
@@ -34,6 +36,7 @@ import (
 	"github.com/pingcap/tidb-operator/pkg/manager/suspender"
 	mngerutils "github.com/pingcap/tidb-operator/pkg/manager/utils"
 	"github.com/pingcap/tidb-operator/pkg/manager/volumes"
+	"github.com/pingcap/tidb-operator/pkg/pdapi"
 	"github.com/pingcap/tidb-operator/pkg/util"
 	"github.com/pingcap/tidb-operator/pkg/util/cmpver"
 
@@ -74,6 +77,75 @@ var (
 	// node labels that can be used as tidb DC label Name
 	topologyZoneLabels = []string{"zone", "topology.kubernetes.io/zone", "failure-domain.beta.kubernetes.io/zone"}
 )
+
+const (
+	encGroupSize = 8
+	encMarker    = byte(0xFF)
+	encPad       = byte(0x0)
+)
+
+var (
+	pads = make([]byte, encGroupSize)
+)
+
+func reallocBytes(b []byte, n int) []byte {
+	newSize := len(b) + n
+	if cap(b) < newSize {
+		bs := make([]byte, len(b), newSize)
+		copy(bs, b)
+		return bs
+	}
+
+	// slice b has capability to store n bytes
+	return b
+}
+
+func EncodeBytes(b []byte, data []byte) []byte {
+	dLen := len(data)
+	reallocSize := (dLen/encGroupSize + 1) * (encGroupSize + 1)
+	result := reallocBytes(b, reallocSize)
+	for idx := 0; idx <= dLen; idx += encGroupSize {
+		remain := dLen - idx
+		padCount := 0
+		if remain >= encGroupSize {
+			result = append(result, data[idx:idx+encGroupSize]...)
+		} else {
+			padCount = encGroupSize - remain
+			result = append(result, data[idx:]...)
+			result = append(result, pads[:padCount]...)
+		}
+
+		marker := encMarker - byte(padCount)
+		result = append(result, marker)
+	}
+
+	return result
+}
+
+const signMask uint64 = 0x8000000000000000
+
+func EncodeIntToCmpUint(v int64) uint64 {
+	return uint64(v) ^ signMask
+}
+
+func EncodeInt(b []byte, v int64) []byte {
+	var data [8]byte
+	u := EncodeIntToCmpUint(v)
+	binary.BigEndian.PutUint64(data[:], u)
+	return append(b, data[:]...)
+}
+
+func EncodeKey(id int64, index bool) []byte {
+	var s []byte
+	s = append(s, "t"...)
+	s = EncodeInt(s, id)
+	if index {
+		s = append(s, "_i"...)
+	} else {
+		s = append(s, "_r"...)
+	}
+	return EncodeBytes(nil, s)
+}
 
 type tidbMemberManager struct {
 	deps              *controller.Dependencies
@@ -1065,7 +1137,134 @@ func (m *tidbMemberManager) syncTidbClusterStatus(tc *v1alpha1.TidbCluster, set 
 const tidbSupportLabelsMinVersin = "6.3.0"
 
 func (m *tidbMemberManager) setServerLabels(tc *v1alpha1.TidbCluster) (int, error) {
-	if tc.Spec.MicroService != "" {
+	if ms := tc.Spec.MicroService; ms != "" {
+		if ms == "tp" {
+			pdcli := m.deps.PDControl.GetPDClient(pdapi.Namespace(tc.Namespace), tc.Name, tc.IsTLSClusterEnabled())
+			stores, err := pdcli.GetStores()
+			if err != nil {
+				return 0, err
+			}
+			tpNodes := []string{}
+			apNodes := []string{}
+			for _, s := range stores.Stores {
+				isTP := false
+				for _, label := range s.Store.Labels {
+					if label.Key == "zone" {
+						isTP = label.Value == "tp"
+					}
+				}
+				for _, label := range s.Store.Labels {
+					if label.Key == "node" {
+						if isTP {
+							tpNodes = append(tpNodes, label.Value)
+						} else {
+							apNodes = append(apNodes, label.Value)
+						}
+					}
+				}
+			}
+
+			defRule := pdapi.PlacementGroup{
+				ID:       "pd",
+				Index:    10,
+				Override: true,
+				Rules: []*pdapi.PlacementRule{
+					{
+						GroupID: "pd",
+						ID:      "tp",
+						Role:    "voter",
+						Count:   len(tpNodes),
+						LabelConstraints: []pdapi.LabelConstraint{
+							{
+								Key:    "node",
+								Op:     "in",
+								Values: tpNodes,
+							},
+						},
+					},
+				},
+			}
+			if len(apNodes) > 0 {
+				defRule.Rules = append(defRule.Rules, &pdapi.PlacementRule{
+					GroupID: "pd",
+					ID:      "ap",
+					Role:    "follower",
+					Count:   len(apNodes) - 1,
+					LabelConstraints: []pdapi.LabelConstraint{
+						{
+							Key:    "node",
+							Op:     "in",
+							Values: apNodes[1:],
+						},
+					},
+				})
+			}
+			rules := []pdapi.PlacementGroup{defRule}
+
+			if len(apNodes) > 0 {
+				schemas, err := m.deps.TiDBControl.GetSchemas(tc)
+				if err != nil {
+					return 0, err
+				}
+				for _, schema := range schemas {
+					if schema.Name.L == "mysql" || strings.HasSuffix(schema.Name.L, "_schema") {
+						continue
+					}
+
+					tbs, err := m.deps.TiDBControl.GetTables(tc, schema.Name.L)
+					if err != nil {
+						return 0, err
+					}
+					for _, tb := range tbs {
+						idxStart := hex.EncodeToString(EncodeKey(tb.ID, true))
+						idxEnd := hex.EncodeToString(EncodeKey(tb.ID+1, true))
+						gid := fmt.Sprintf("i%d", uint64(tb.ID))
+						idxRule := pdapi.PlacementGroup{
+							ID:       gid,
+							Index:    20,
+							Override: true,
+							Rules: []*pdapi.PlacementRule{
+								{
+									GroupID:     gid,
+									ID:          "apl",
+									Role:        "leader",
+									Count:       1,
+									StartKeyHex: idxStart,
+									EndKeyHex:   idxEnd,
+									LabelConstraints: []pdapi.LabelConstraint{
+										{
+											Key:    "node",
+											Op:     "in",
+											Values: apNodes[:1],
+										},
+									},
+								},
+							},
+						}
+						if len(apNodes) > 1 {
+							idxRule.Rules = append(idxRule.Rules, &pdapi.PlacementRule{
+								GroupID:     gid,
+								ID:          "apv",
+								Role:        "voter",
+								Count:       len(apNodes) - 1,
+								StartKeyHex: idxStart,
+								EndKeyHex:   idxEnd,
+								LabelConstraints: []pdapi.LabelConstraint{
+									{
+										Key:    "node",
+										Op:     "in",
+										Values: apNodes[1:],
+									},
+								},
+							})
+						}
+						rules = append(rules, idxRule)
+					}
+				}
+			}
+			return 0, pdcli.SetRules(rules)
+		}
+
 		return 0, nil
 	}
 

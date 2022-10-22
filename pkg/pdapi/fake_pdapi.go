@@ -270,3 +270,11 @@ func (c *FakePDClient) GetAutoscalingPlans(strategy Strategy) ([]Plan, error) {
 	}
 	return nil, nil
 }
+
+func (fpc *FakePDClient) GetRules() ([]PlacementGroup, error) {
+	return []PlacementGroup{}, nil
+}
+
+func (fpc *FakePDClient) SetRules(_ []PlacementGroup) error {
+	return nil
+}

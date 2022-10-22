@@ -152,7 +152,7 @@ func (c *defaultTiProxyControl) UpdateNamespace(tc *v1alpha1.TidbCluster, cfg *c
 		return err
 	}
 
-	if bytes.Equal(res.Bytes(), be) {
+	if bytes.Equal(bytes.TrimSpace(res.Bytes()), bytes.TrimSpace(be)) {
 		return nil
 	}
 

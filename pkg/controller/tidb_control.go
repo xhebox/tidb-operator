@@ -34,6 +34,21 @@ const (
 	timeout          = 5 * time.Second
 )
 
+type CIStr struct {
+	O string `json:"O"` // Original string.
+	L string `json:"L"` // Lower case string.
+}
+
+type SchemaInfo struct {
+	ID   int64 `json:"id"`      // Database ID
+	Name CIStr `json:"db_name"` // DB name.
+}
+
+type TableInfo struct {
+	ID   int64 `json:"id"`
+	Name CIStr `json:"name"`
+}
+
 type DBInfo struct {
 	IsOwner bool `json:"is_owner"`
 }
@@ -48,6 +63,8 @@ type TiDBControlInterface interface {
 	GetSettings(tc *v1alpha1.TidbCluster, ordinal int32) (*config.Config, error)
 	// SetServerLabels update TiDB's labels config
 	SetServerLabels(tc *v1alpha1.TidbCluster, ordinal int32, labels map[string]string) error
+	GetSchemas(tc *v1alpha1.TidbCluster) ([]SchemaInfo, error)
+	GetTables(tc *v1alpha1.TidbCluster, db string) ([]TableInfo, error)
 }
 
 // defaultTiDBControl is default implementation of TiDBControlInterface.
@@ -60,6 +77,36 @@ type defaultTiDBControl struct {
 // NewDefaultTiDBControl returns a defaultTiDBControl instance
 func NewDefaultTiDBControl(secretLister corelisterv1.SecretLister) *defaultTiDBControl {
 	return &defaultTiDBControl{httpClient: httpClient{secretLister: secretLister}}
+}
+
+func (c *defaultTiDBControl) GetSchemas(tc *v1alpha1.TidbCluster) ([]SchemaInfo, error) {
+	dbs := []SchemaInfo{}
+	httpClient, err := c.getHTTPClient(tc)
+	if err != nil {
+		return nil, err
+	}
+	baseURL := fmt.Sprintf("%s://%s:10080", tc.Scheme(), TiDBPeerMemberName(tc.Name))
+	url := fmt.Sprintf("%s/schema", baseURL)
+	res, err := getBodyOK(httpClient, url)
+	if err := json.Unmarshal(res, &dbs); err != nil {
+		return nil, err
+	}
+	return dbs, nil
+}
+
+func (c *defaultTiDBControl) GetTables(tc *v1alpha1.TidbCluster, db string) ([]TableInfo, error) {
+	tbs := []TableInfo{}
+	httpClient, err := c.getHTTPClient(tc)
+	if err != nil {
+		return nil, err
+	}
+	baseURL := fmt.Sprintf("%s://%s:10080", tc.Scheme(), TiDBPeerMemberName(tc.Name))
+	url := fmt.Sprintf("%s/schema/%s", baseURL, db)
+	res, err := getBodyOK(httpClient, url)
+	if err := json.Unmarshal(res, &tbs); err != nil {
+		return nil, err
+	}
+	return tbs, nil
 }
 
 func (c *defaultTiDBControl) GetHealth(tc *v1alpha1.TidbCluster, ordinal int32) (bool, error) {
@@ -232,4 +279,12 @@ func (c *FakeTiDBControl) GetSettings(tc *v1alpha1.TidbCluster, ordinal int32) (
 
 func (c *FakeTiDBControl) SetServerLabels(tc *v1alpha1.TidbCluster, ordinal int32, labels map[string]string) error {
 	return c.setLabelsError
+}
+
+func (c *FakeTiDBControl) GetSchemas(tc *v1alpha1.TidbCluster) ([]SchemaInfo, error) {
+	return nil, nil
+}
+
+func (c *FakeTiDBControl) GetTables(tc *v1alpha1.TidbCluster, db string) ([]TableInfo, error) {
+	return nil, nil
 }

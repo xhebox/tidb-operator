@@ -13,7 +13,7 @@ spec:
     maxFailoverCount: 0
     requests:
       storage: "100Mi"
-      memory: "10Mi"
+      memory: "200Mi"
     config: {}
   tikv:
     baseImage: pingcap/tikv
@@ -21,7 +21,7 @@ spec:
     maxFailoverCount: 0
     requests:
       storage: "100Mi"
-      memory: "10Mi"
+      memory: "200Mi"
     config:
       storage:
         reserve-space: "0MB"
@@ -36,7 +36,7 @@ spec:
     replicas: 1
     requests:
       storage: "100Mi"
-      memory: "10Mi"
+      memory: "200Mi"
     maxFailoverCount: 0
     service:
       type: ClusterIP
@@ -48,4 +48,4 @@ spec:
     replicas: 1
     requests:
       storage: "100Mi"
-      memory: "10Mi"
+      memory: "200Mi"

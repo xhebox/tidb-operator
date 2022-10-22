@@ -48,10 +48,41 @@ func GetTLSConfig(secretLister corelisterv1.SecretLister, namespace Namespace, s
 	return crypto.LoadTlsConfigFromSecret(secret)
 }
 
+type LabelConstraint struct {
+	Key    string   `json:"key,omitempty"`
+	Op     string   `json:"op,omitempty"`
+	Values []string `json:"values,omitempty"`
+}
+type PlacementRule struct {
+	GroupID          string            `json:"group_id"`                    // mark the source that add the rule
+	ID               string            `json:"id"`                          // unique ID within a group
+	Index            int               `json:"index,omitempty"`             // rule apply order in a group, rule with less ID is applied first when indexes are equal
+	Override         bool              `json:"override,omitempty"`          // when it is true, all rules with less indexes are disabled
+	StartKey         []byte            `json:"-"`                           // range start key
+	StartKeyHex      string            `json:"start_key"`                   // hex format start key, for marshal/unmarshal
+	EndKey           []byte            `json:"-"`                           // range end key
+	EndKeyHex        string            `json:"end_key"`                     // hex format end key, for marshal/unmarshal
+	Role             string            `json:"role"`                        // expected role of the peers
+	Count            int               `json:"count"`                       // expected count of the peers
+	LabelConstraints []LabelConstraint `json:"label_constraints,omitempty"` // used to select stores to place peers
+	LocationLabels   []string          `json:"location_labels,omitempty"`   // used to make peers isolated physically
+	IsolationLevel   string            `json:"isolation_level,omitempty"`   // used to isolate replicas explicitly and forcibly
+	Version          uint64            `json:"version,omitempty"`           // only set at runtime, add 1 each time rules updated, begin from 0.
+	CreateTimestamp  uint64            `json:"create_timestamp,omitempty"`  // only set at runtime, recorded rule create timestamp
+}
+type PlacementGroup struct {
+	ID       string           `json:"group_id"`
+	Index    int              `json:"group_index"`
+	Override bool             `json:"group_override"`
+	Rules    []*PlacementRule `json:"rules"`
+}
+
 // PDClient provides pd server's api
 type PDClient interface {
 	// GetHealth returns the PD's health info
 	GetHealth() (*HealthInfo, error)
+	GetRules() ([]PlacementGroup, error)
+	SetRules([]PlacementGroup) error
 	// GetConfig returns PD's config
 	GetConfig() (*PDConfigFromAPI, error)
 	// GetCluster returns used when syncing pod labels.
@@ -325,6 +356,30 @@ func (c *pdClient) GetStores() (*StoresInfo, error) {
 		return nil, err
 	}
 	return storesInfo, nil
+}
+
+func (c *pdClient) GetRules() ([]PlacementGroup, error) {
+	body, err := httputil.GetBodyOK(c.httpClient, fmt.Sprintf("%s/pd/api/v1/config/placement-rule", c.url))
+	if err != nil {
+		return nil, err
+	}
+	rules := []PlacementGroup{}
+	err = json.Unmarshal(body, &rules)
+	if err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
+func (c *pdClient) SetRules(rules []PlacementGroup) error {
+	res, err := json.Marshal(rules)
+	if err != nil {
+		return err
+	}
+	_, err = httputil.PostBodyOK(c.httpClient, fmt.Sprintf("%s/pd/api/v1/config/placement-rule", c.url), bytes.NewReader(res))
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *pdClient) GetTombStoneStores() (*StoresInfo, error) {
