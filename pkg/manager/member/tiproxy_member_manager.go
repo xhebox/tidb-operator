@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pingcap/TiProxy/lib/config"
 	"github.com/pingcap/advanced-statefulset/client/apis/apps/v1/helper"
 	"github.com/pingcap/tidb-operator/pkg/apis/label"
 	"github.com/pingcap/tidb-operator/pkg/apis/pingcap/v1alpha1"
@@ -71,6 +72,25 @@ func NewTiProxyMemberManager(deps *controller.Dependencies, scaler Scaler, upgra
 // Sync fulfills the manager.Manager interface
 func (m *tiproxyMemberManager) Sync(tc *v1alpha1.TidbCluster) error {
 	if tc.Spec.TiProxy == nil {
+		if tc.Spec.TiDB == nil {
+			return nil
+		}
+		if tc.Spec.MicroService == "ap" {
+			if err := m.deps.ProxyControl.UpdateNamespace(tc, &config.Namespace{
+				Namespace: tc.Name,
+				Frontend: config.FrontendNamespace{
+					User: tc.Name,
+				},
+				Backend: config.BackendNamespace{
+					Instances: []string{
+						fmt.Sprintf("%s:4000", controller.TiDBMemberName(tc.Name)),
+					},
+					SelectorType: "random",
+				},
+			}); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -115,7 +135,9 @@ func (m *tiproxyMemberManager) syncConfigMap(tc *v1alpha1.TidbCluster, set *apps
 
 	state := map[string]interface{}{
 		"WorkDir": filepath.Join(tiproxyVolumeMountPath, "work"),
-		"PDAddr":  PDAddr,
+	}
+	if tc.Spec.MicroService == "" {
+		state["PDAddr"] = PDAddr
 	}
 	if tc.IsTLSClusterEnabled() {
 		state["PeerTLS"] = tiproxyCertVolumeMountPath
@@ -133,7 +155,9 @@ proxy:
   tcp-keep-alive: true
   max-connections: 1000
   require-backend-tls: false
+  {{if .PDAddr}}
   pd-addrs: {{ .PDAddr }}
+  {{end}}
   # proxy-protocol: "v2"
 metrics:
 api:
@@ -317,6 +341,20 @@ func (m *tiproxyMemberManager) syncStatus(tc *v1alpha1.TidbCluster, sts *apps.St
 			if err := m.deps.ProxyControl.SetConfigProxy(tc, pods.UnsortedList()[0], tc.Spec.TiProxy.Proxy); err != nil {
 				return err
 			}
+		}
+	}
+
+	if tc.Spec.MicroService == "tp" && replicas == int(tc.TiProxyDeployDesiredReplicas()) {
+		if err := m.deps.ProxyControl.UpdateNamespace(tc, &config.Namespace{
+			Namespace: "default",
+			Backend: config.BackendNamespace{
+				Instances: []string{
+					fmt.Sprintf("%s:4000", controller.TiDBMemberName(tc.Name)),
+				},
+				SelectorType: "random",
+			},
+		}); err != nil {
+			return err
 		}
 	}
 

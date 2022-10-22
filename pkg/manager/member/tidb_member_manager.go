@@ -548,6 +548,9 @@ func getTiDBConfigMap(tc *v1alpha1.TidbCluster) (*corev1.ConfigMap, error) {
 		config.Set("security.ssl-cert", path.Join(serverCertPath, corev1.TLSCertKey))
 		config.Set("security.ssl-key", path.Join(serverCertPath, corev1.TLSPrivateKeyKey))
 	}
+	if tc.Spec.MicroService != "" {
+		config.Set("labels.zone", tc.Spec.MicroService)
+	}
 	confText, err := config.MarshalTOML()
 	if err != nil {
 		return nil, err
@@ -879,6 +882,13 @@ func getNewTiDBSetForTidbCluster(tc *v1alpha1.TidbCluster, cm *corev1.ConfigMap)
 		},
 	}
 
+	if tc.Spec.MicroService == "ap" {
+		envs = append(envs, corev1.EnvVar{
+			Name:  "ENABLE_DDL_SRV",
+			Value: "1",
+		})
+	}
+
 	c := corev1.Container{
 		Name:            v1alpha1.TiDBMemberType.String(),
 		Image:           tc.TiDBImage(),
@@ -1055,6 +1065,10 @@ func (m *tidbMemberManager) syncTidbClusterStatus(tc *v1alpha1.TidbCluster, set 
 const tidbSupportLabelsMinVersin = "6.3.0"
 
 func (m *tidbMemberManager) setServerLabels(tc *v1alpha1.TidbCluster) (int, error) {
+	if tc.Spec.MicroService != "" {
+		return 0, nil
+	}
+
 	tidbVersion := tc.TiDBVersion()
 	isOlder, err := cmpver.Compare(tidbVersion, cmpver.Less, tidbSupportLabelsMinVersin)
 	if err != nil {

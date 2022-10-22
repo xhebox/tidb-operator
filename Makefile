@@ -43,7 +43,7 @@ endif
 ifeq ($(E2E),y)
 	docker build --tag "${DOCKER_REPO}/tidb-operator:${IMAGE_TAG}" -f images/tidb-operator/Dockerfile.e2e images/tidb-operator
 else
-	docker build --tag "${DOCKER_REPO}/tidb-operator:${IMAGE_TAG}" --build-arg=TARGETARCH=$(GOARCH) images/tidb-operator
+	docker build --tag "operator:${IMAGE_TAG}" --build-arg=TARGETARCH=$(GOARCH) images/tidb-operator
 endif
 
 build: controller-manager scheduler discovery admission-webhook backup-manager

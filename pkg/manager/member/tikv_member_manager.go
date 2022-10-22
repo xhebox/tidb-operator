@@ -906,6 +906,35 @@ func (m *tikvMemberManager) setStoreLabelsForTiKV(tc *v1alpha1.TidbCluster) (int
 		return setCount, err
 	}
 
+	if tc.Spec.MicroService != "" {
+		for _, store := range storesInfo.Stores {
+			haveZone := false
+			haveNode := false
+			nodeValue := fmt.Sprintf("node-%d", store.Store.Id)
+			for _, label := range store.Store.Labels {
+				if label.Key == "zone" && label.Value == tc.Spec.MicroService {
+					haveZone = true
+				} else if label.Key == "node" && label.Value == nodeValue {
+					haveNode = true
+				}
+			}
+			if !haveNode || !haveZone {
+				labels := map[string]string{
+					"zone": tc.Spec.MicroService,
+					"node": nodeValue,
+				}
+				_, err := pdCli.SetStoreLabels(store.Store.Id, labels)
+				if err != nil {
+					msg := fmt.Sprintf("failed to set labels %v for store (id: %d, ns: %s): %v ",
+						labels, store.Store.Id, ns, err)
+					m.deps.Recorder.Event(tc, corev1.EventTypeWarning, FailedSetStoreLabels, msg)
+					continue
+				}
+			}
+		}
+		return 0, nil
+	}
+
 	config, err := pdCli.GetConfig()
 	if err != nil {
 		return setCount, err

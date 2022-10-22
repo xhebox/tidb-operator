@@ -27,6 +27,7 @@ import (
 	"github.com/pingcap/tidb-operator/pkg/apis/pingcap/v1alpha1"
 	"github.com/pingcap/tidb-operator/pkg/util"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
 	corelisterv1 "k8s.io/client-go/listers/core/v1"
 )
@@ -41,6 +42,7 @@ type TiProxyControlInterface interface {
 	SetConfigProxy(tc *v1alpha1.TidbCluster, ordinal int32, cfg *config.ProxyServerOnline) error
 	// GetConfigProxy get the proxy part in config
 	GetConfigProxy(tc *v1alpha1.TidbCluster, ordinal int32) (*config.ProxyServerOnline, error)
+	UpdateNamespace(tc *v1alpha1.TidbCluster, cfg *config.Namespace) error
 }
 
 // defaultTiProxyControl is default implementation of TiProxyControlInterface.
@@ -56,6 +58,9 @@ func NewDefaultTiProxyControl(secretLister corelisterv1.SecretLister) *defaultTi
 func (c *defaultTiProxyControl) getCli(tc *v1alpha1.TidbCluster, ordinal int32) func(io.Reader, ...string) (*bytes.Buffer, error) {
 	return func(in io.Reader, s ...string) (*bytes.Buffer, error) {
 		tcName := tc.GetName()
+		if tc.Heterogeneous() && tc.Spec.TiProxy == nil {
+			tcName = tc.Spec.Cluster.Name
+		}
 
 		args := append([]string{},
 			"--log_level",
@@ -133,5 +138,29 @@ func (c *defaultTiProxyControl) SetConfigProxy(tc *v1alpha1.TidbCluster, ordinal
 	}
 
 	_, err = c.getCli(tc, ordinal)(bytes.NewReader(be), "config", "proxy", "set")
+	return err
+}
+
+func (c *defaultTiProxyControl) UpdateNamespace(tc *v1alpha1.TidbCluster, cfg *config.Namespace) error {
+	res, err := c.getCli(tc, 0)(nil, "namespace", "get", cfg.Namespace)
+	if err != nil {
+		return err
+	}
+
+	be, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	if bytes.Equal(res.Bytes(), be) {
+		return nil
+	}
+
+	_, err = c.getCli(tc, 0)(bytes.NewReader(be), "namespace", "put")
+	if err != nil {
+		return err
+	}
+
+	_, err = c.getCli(tc, 0)(bytes.NewReader(be), "namespace", "commit", cfg.Namespace)
 	return err
 }

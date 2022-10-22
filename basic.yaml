@@ -1,0 +1,51 @@
+apiVersion: pingcap.com/v1alpha1
+kind: TidbCluster
+metadata:
+  name: basic
+spec:
+  microservice: "tp"
+  version: v6.3.0
+  timezone: UTC
+  pvReclaimPolicy: Delete
+  pd:
+    baseImage: pingcap/pd
+    replicas: 1
+    maxFailoverCount: 0
+    requests:
+      storage: "100Mi"
+      memory: "10Mi"
+    config: {}
+  tikv:
+    baseImage: pingcap/tikv
+    replicas: 1
+    maxFailoverCount: 0
+    requests:
+      storage: "100Mi"
+      memory: "10Mi"
+    config:
+      storage:
+        reserve-space: "0MB"
+      rocksdb:
+        max-open-files: 256
+      raftdb:
+        max-open-files: 256
+  tidb:
+    baseImage: tidb
+    imagePullPolicy: Never
+    version: latest
+    replicas: 1
+    requests:
+      storage: "100Mi"
+      memory: "10Mi"
+    maxFailoverCount: 0
+    service:
+      type: ClusterIP
+    config: {}
+  tiproxy:
+    baseImage: tiproxy
+    imagePullPolicy: Never
+    version: latest
+    replicas: 1
+    requests:
+      storage: "100Mi"
+      memory: "10Mi"

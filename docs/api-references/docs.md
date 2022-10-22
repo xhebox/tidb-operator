@@ -1922,6 +1922,18 @@ Optional: Defaults to &ldquo;&rdquo;</p>
 </tr>
 <tr>
 <td>
+<code>microservice</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MicroService is to specify service type</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>acrossK8s</code></br>
 <em>
 bool
@@ -22934,6 +22946,18 @@ string
 <em>(Optional)</em>
 <p>ClusterDomain is the Kubernetes Cluster Domain of TiDB cluster
 Optional: Defaults to &ldquo;&rdquo;</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>microservice</code></br>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MicroService is to specify service type</p>
 </td>
 </tr>
 <tr>

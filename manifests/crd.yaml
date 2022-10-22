@@ -15913,6 +15913,8 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              microservice:
+                type: string
               nodeSelector:
                 additionalProperties:
                   type: string

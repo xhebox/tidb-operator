@@ -321,6 +321,10 @@ type TidbClusterSpec struct {
 	// +optional
 	ClusterDomain string `json:"clusterDomain,omitempty"`
 
+	// MicroService is to specify service type
+	// +optional
+	MicroService string `json:"microservice,omitempty"`
+
 	// AcrossK8s indicates whether deploy TiDB cluster across multiple Kubernetes clusters
 	// +optional
 	AcrossK8s bool `json:"acrossK8s,omitempty"`
