@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM alpine:3.14
 
 ARG TARGETARCH
 RUN apk add tzdata bind-tools --no-cache

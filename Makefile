@@ -46,6 +46,9 @@ else
 	docker build --tag "operator:${IMAGE_TAG}" --build-arg=TARGETARCH=$(GOARCH) images/tidb-operator
 endif
 
+dockere:
+	docker buildx build --platform linux/amd64,linux/arm64 --push --tag "$(DOCKERPREFIX)operator:${IMAGE_TAG}" --build-arg=TARGETARCH=$(GOARCH) -f images/tidb-operator/Dockerfile.d .
+
 build: controller-manager scheduler discovery admission-webhook backup-manager
 
 controller-manager:
