@@ -10,7 +10,8 @@ RUN export BUILDFLAGS=${BUILDFLAGS} && export GOPROXY=${GOPROXY} && export E2E=y
 
 FROM alpine:latest
 
-RUN apk add tzdata bind-tools --no-cache --progress
+ADD https://raw.githubusercontent.com/njhallett/apk-fastest-mirror/c4ca44caef3385d830fea34df2dbc2ba4a17e021/apk-fastest-mirror.sh /
+RUN sh /apk-fastest-mirror.sh -t 50 && apk add --no-cache --progress tzdata bind-tools
 
 COPY --from=builder /src/images/tidb-operator/bin/tidb-scheduler /usr/local/bin/tidb-scheduler
 COPY --from=builder /src/images/tidb-operator/bin/tidb-discovery /usr/local/bin/tidb-discovery

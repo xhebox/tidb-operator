@@ -13,7 +13,6 @@ spec:
     maxFailoverCount: 0
     requests:
       storage: "1Gi"
-      memory: "300Mi"
     config: {}
   tikv:
     baseImage: pingcap/tikv
@@ -21,7 +20,6 @@ spec:
     maxFailoverCount: 0
     requests:
       storage: "1Gi"
-      memory: "300Mi"
     config:
       storage:
         reserve-space: "0MB"
@@ -30,22 +28,20 @@ spec:
       raftdb:
         max-open-files: 256
   tidb:
-    baseImage: tidb
-    imagePullPolicy: Never
+    baseImage: xhebox/tidb
+    imagePullPolicy: Always
     version: latest
     replicas: 1
     requests:
       storage: "1Gi"
-      memory: "300Mi"
     maxFailoverCount: 0
     service:
       type: ClusterIP
     config: {}
   tiproxy:
-    baseImage: tiproxy
-    imagePullPolicy: Never
+    baseImage: xhebox/tiproxy
+    imagePullPolicy: Always
     version: latest
     replicas: 1
     requests:
       storage: "1Gi"
-      memory: "300Mi"

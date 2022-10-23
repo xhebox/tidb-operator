@@ -9,9 +9,8 @@ kubectl delete --force namespace $namespace || true
 kubectl create namespace $namespace
 
 if [ -n "$1" ]; then
+	eval $(minikube docker-env)
 	make operator-docker
-	minikube image rm operator:latest
-	minikube image load operator:latest
 fi
 
 helm install operator ./charts/tidb-operator/ -n testing --set "operatorImage=operator:latest"
