@@ -135,14 +135,13 @@ func EncodeInt(b []byte, v int64) []byte {
 	return append(b, data[:]...)
 }
 
-func EncodeKey(id int64, index bool) []byte {
+func EncodeKey(id int64, idxID int64) []byte {
 	var s []byte
 	s = append(s, "t"...)
 	s = EncodeInt(s, id)
-	if index {
-		s = append(s, "_i"...)
-	} else {
-		s = append(s, "_r"...)
+	s = append(s, "_i"...)
+	if idxID != 0 {
+		s = EncodeInt(s, idxID)
 	}
 	return EncodeBytes(nil, s)
 }
@@ -1151,6 +1150,7 @@ func (m *tidbMemberManager) setServerLabels(tc *v1alpha1.TidbCluster) (int, erro
 				for _, label := range s.Store.Labels {
 					if label.Key == "zone" {
 						isTP = label.Value == "tp"
+						break
 					}
 				}
 				for _, label := range s.Store.Labels {
@@ -1160,6 +1160,7 @@ func (m *tidbMemberManager) setServerLabels(tc *v1alpha1.TidbCluster) (int, erro
 						} else {
 							apNodes = append(apNodes, label.Value)
 						}
+						break
 					}
 				}
 			}
@@ -1185,16 +1186,22 @@ func (m *tidbMemberManager) setServerLabels(tc *v1alpha1.TidbCluster) (int, erro
 				},
 			}
 			if len(apNodes) > 0 {
+				count := len(apNodes) - 1
+				nodes := apNodes[1:]
+				if len(apNodes) == 1 {
+					count = 1
+					nodes = apNodes
+				}
 				defRule.Rules = append(defRule.Rules, &pdapi.PlacementRule{
 					GroupID: "pd",
 					ID:      "ap",
 					Role:    "follower",
-					Count:   len(apNodes) - 1,
+					Count:   count,
 					LabelConstraints: []pdapi.LabelConstraint{
 						{
 							Key:    "node",
 							Op:     "in",
-							Values: apNodes[1:],
+							Values: nodes,
 						},
 					},
 				})
@@ -1216,8 +1223,8 @@ func (m *tidbMemberManager) setServerLabels(tc *v1alpha1.TidbCluster) (int, erro
 						return 0, err
 					}
 					for _, tb := range tbs {
-						idxStart := hex.EncodeToString(EncodeKey(tb.ID, true))
-						idxEnd := hex.EncodeToString(EncodeKey(tb.ID+1, true))
+						idxStart := hex.EncodeToString(EncodeKey(tb.ID, 0))
+						idxEnd := hex.EncodeToString(EncodeKey(tb.ID+1, 0))
 						gid := fmt.Sprintf("i%d", uint64(tb.ID))
 						idxRule := pdapi.PlacementGroup{
 							ID:       gid,

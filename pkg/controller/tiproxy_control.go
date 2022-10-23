@@ -142,16 +142,11 @@ func (c *defaultTiProxyControl) SetConfigProxy(tc *v1alpha1.TidbCluster, ordinal
 }
 
 func (c *defaultTiProxyControl) UpdateNamespace(tc *v1alpha1.TidbCluster, cfg *config.Namespace) error {
-	res, err := c.getCli(tc, 0)(nil, "namespace", "get", cfg.Namespace)
-	if err != nil {
-		return err
-	}
-
+	res, _ := c.getCli(tc, 0)(nil, "namespace", "get", cfg.Namespace)
 	be, err := yaml.Marshal(cfg)
 	if err != nil {
 		return err
 	}
-
 	if bytes.Equal(bytes.TrimSpace(res.Bytes()), bytes.TrimSpace(be)) {
 		return nil
 	}

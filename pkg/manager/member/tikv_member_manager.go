@@ -907,7 +907,12 @@ func (m *tikvMemberManager) setStoreLabelsForTiKV(tc *v1alpha1.TidbCluster) (int
 	}
 
 	if tc.Spec.MicroService != "" {
+		pattern := regexp.MustCompile(controller.TiKVPeerMemberName(tc.Name))
 		for _, store := range storesInfo.Stores {
+			if !pattern.Match([]byte(store.Store.PeerAddress)) {
+				continue
+			}
+
 			haveZone := false
 			haveNode := false
 			nodeValue := fmt.Sprintf("node-%d", store.Store.Id)

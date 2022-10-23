@@ -23,8 +23,8 @@ spec:
       raftdb:
         max-open-files: 256
   tidb:
-    baseImage: tidb
-    imagePullPolicy: Never
+    baseImage: xhebox/tidb
+    imagePullPolicy: Always
     version: latest
     replicas: 1
     requests:
